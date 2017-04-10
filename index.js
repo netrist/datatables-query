@@ -139,12 +139,12 @@ var async = require('async'),
         }
 
         return params
-            .columns
-            .map(col => col.data)
-            .reduce((selectParams, field) => {
-                selectParams[field] = 1;
-                return selectParams;
-            }, {});
+        .columns
+        .map(col => col.data)
+        .reduce((selectParams, field) => {
+            selectParams[field] = 1;
+            return selectParams;
+        }, {});
     },
 
     /**
@@ -160,8 +160,10 @@ var async = require('async'),
          * The actual run function
          * Performs the query on the passed Model object, using the DataTable params argument
          * @param {Object} params DataTable params object
+         * @param {Object} query parameters to add to the query
+         * @param {Object} populate parameter
          */
-        return function (params) {
+        return function (params, customFindParams, populate) {
 
             var draw = Number(params.draw),
                 start = Number(params.start),
@@ -172,13 +174,19 @@ var async = require('async'),
                 recordsTotal,
                 recordsFiltered;
 
+            if (customFindParams) {
+                Object.keys(customFindParams).forEach(function (key) {
+                    findParameters[key] = customFindParams[key];
+                });
+            }
+
             return new Promise(function (fullfill, reject) {
 
                 async.series([
-                    function checkParams (cb) {
+                    function checkParams(cb) {
                         if (isNaNorUndefined(draw, start, length)) {
                             return cb(new Error('Some parameters are missing or in a wrong state. ' +
-                            'Could be any of draw, start or length'));
+                                'Could be any of draw, start or length'));
                         }
 
                         if (!findParameters || !sortParameters || !selectParameters) {
@@ -186,7 +194,7 @@ var async = require('async'),
                         }
                         cb();
                     },
-                    function fetchRecordsTotal (cb) {
+                    function fetchRecordsTotal(cb) {
                         Model.count({}, function (err, count) {
                             if (err) {
                                 return cb(err);
@@ -195,7 +203,7 @@ var async = require('async'),
                             cb();
                         });
                     },
-                    function fetchRecordsFiltered (cb) {
+                    function fetchRecordsFiltered(cb) {
                         Model.count(findParameters, function (err, count) {
                             if (err) {
                                 return cb(err);
@@ -204,27 +212,31 @@ var async = require('async'),
                             cb();
                         });
                     },
-                    function runQuery (cb) {
-                        Model
-                            .find(findParameters)
-                            .select(selectParameters)
-                            .limit(length)
-                            .skip(start)
-                            .sort(sortParameters)
-                            .exec(function (err, results) {
-                                if (err) {
-                                    return cb(err);
-                                }
-                                cb(null, {
-                                    draw: draw,
-                                    recordsTotal: recordsTotal,
-                                    recordsFiltered: recordsFiltered,
-                                    data: results
-                                });
+                    function runQuery(cb) {
+                        var query = Model
+                        .find(findParameters);
+
+                        if (populate) {
+                            query.populate(populate.name, populate.fields);
+                        }
+                        query.select(selectParameters)
+                        .limit(length)
+                        .skip(start)
+                        .sort(sortParameters)
+                        .exec(function (err, results) {
+                            if (err) {
+                                return cb(err);
+                            }
+                            cb(null, {
+                                draw: draw,
+                                recordsTotal: recordsTotal,
+                                recordsFiltered: recordsFiltered,
+                                data: results
                             });
+                        });
 
                     }
-                ], function resolve (err, results) {
+                ], function resolve(err, results) {
                     if (err) {
                         reject({
                             error: err
